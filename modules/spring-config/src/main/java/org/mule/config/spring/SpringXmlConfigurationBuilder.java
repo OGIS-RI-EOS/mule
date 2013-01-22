@@ -18,8 +18,11 @@ import org.mule.api.registry.Registry;
 import org.mule.config.ConfigResource;
 import org.mule.config.builders.AbstractResourceConfigurationBuilder;
 import org.mule.config.i18n.MessageFactory;
+import org.mule.util.StringUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
+
+import java.io.IOException;
 
 /**
  * <code>SpringXmlConfigurationBuilder</code> enables Mule to be configured from a
@@ -30,6 +33,7 @@ public class SpringXmlConfigurationBuilder extends AbstractResourceConfiguration
 {
     public static final String MULE_DEFAULTS_CONFIG = "default-mule-config.xml";
     public static final String MULE_SPRING_CONFIG = "mule-spring-config.xml";
+    public static final String IMPLICIT_MULE_XML_CONFIG_PROPERTY="mule.implicit.xml.config.urls";
 
     /** Prepend "default-mule-config.xml" to the list of config resources. */
     protected boolean useDefaultConfigResource = true;
@@ -57,18 +61,21 @@ public class SpringXmlConfigurationBuilder extends AbstractResourceConfiguration
     protected void doConfigure(MuleContext muleContext) throws Exception
     {
         ConfigResource[] allResources;
+        ConfigResource[] implicitResources = getImplicitConfigResources();
         if (useDefaultConfigResource)
         {
-            allResources = new ConfigResource[configResources.length + 2];
+            allResources = new ConfigResource[configResources.length + 2 + implicitResources.length];
             allResources[0] = new ConfigResource(MULE_SPRING_CONFIG);
             allResources[1] = new ConfigResource(MULE_DEFAULTS_CONFIG);
-            System.arraycopy(configResources, 0, allResources, 2, configResources.length);
+            System.arraycopy(implicitResources, 0, allResources, 2, implicitResources.length);
+            System.arraycopy(configResources, 0, allResources, 2 + implicitResources.length, configResources.length);
         }
         else
         {
-            allResources = new ConfigResource[configResources.length + 1];
+            allResources = new ConfigResource[configResources.length + 1 + implicitResources.length];
             allResources[0] = new ConfigResource(MULE_SPRING_CONFIG);
-            System.arraycopy(configResources, 0, allResources, 1, configResources.length);
+            System.arraycopy(implicitResources, 0, allResources, 1, implicitResources.length);
+            System.arraycopy(configResources, 0, allResources, 1 + implicitResources.length, configResources.length);
         }
         createSpringRegistry(muleContext, createApplicationContext(muleContext, allResources));
     }
@@ -127,6 +134,31 @@ public class SpringXmlConfigurationBuilder extends AbstractResourceConfiguration
         {
             lifecycleManager.fireLifecycle(Startable.PHASE_NAME);
         }
+    }
+
+    /**
+     * loading implicit {@link ConfigResource}s from system properties.
+     *
+     * @throws ConfigurationException
+     */
+    protected ConfigResource[] getImplicitConfigResources() throws ConfigurationException
+    {
+        String property_string = System.getProperty(IMPLICIT_MULE_XML_CONFIG_PROPERTY);
+        if (StringUtils.isNotBlank(property_string)) {
+            String[] implicit_config_names = StringUtils.splitAndTrim(property_string, ",; ");
+            ConfigResource[] implicitResources = new ConfigResource[implicit_config_names.length];
+
+            try {
+                for (int i = 0; i < implicit_config_names.length; i++) {
+                    implicitResources[i] = new ConfigResource(implicit_config_names[i]);
+                }
+            } catch (IOException e) {
+                throw new ConfigurationException(e);
+            }
+
+            return implicitResources;
+        }
+        return new ConfigResource[0];
     }
 
     public boolean isUseDefaultConfigResource()
